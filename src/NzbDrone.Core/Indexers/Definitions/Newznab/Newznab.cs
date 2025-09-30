@@ -113,8 +113,8 @@ namespace NzbDrone.Core.Indexers.Newznab
             }
         }
 
-        public Newznab(INewznabCapabilitiesProvider capabilitiesProvider, IIndexerHttpClient httpClient, IEventAggregator eventAggregator, IIndexerStatusService indexerStatusService, IConfigService configService, IValidateNzbs nzbValidationService, Logger logger)
-            : base(httpClient, eventAggregator, indexerStatusService, configService, nzbValidationService, logger)
+        public Newznab(INewznabCapabilitiesProvider capabilitiesProvider, IIndexerHttpClient httpClient, IEventAggregator eventAggregator, IIndexerStatusService indexerStatusService, IConfigService configService, IValidateNzbs nzbValidationService, Logger logger, ICacheManager cacheManager)
+            : base(httpClient, eventAggregator, indexerStatusService, configService, nzbValidationService, logger, cacheManager)
         {
             _capabilitiesProvider = capabilitiesProvider;
         }

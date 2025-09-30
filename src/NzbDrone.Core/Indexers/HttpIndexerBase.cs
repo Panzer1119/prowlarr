@@ -32,6 +32,7 @@ namespace NzbDrone.Core.Indexers
 
         protected readonly IIndexerHttpClient _httpClient;
         protected readonly IEventAggregator _eventAggregator;
+        protected readonly ICached<FetchIndexerResponse> _cache;
 
         protected ResiliencePipeline<HttpResponse> RetryStrategy => new ResiliencePipelineBuilder<HttpResponse>()
             .AddRetry(new RetryStrategyOptions<HttpResponse>
@@ -84,11 +85,12 @@ namespace NzbDrone.Core.Indexers
         public abstract IIndexerRequestGenerator GetRequestGenerator();
         public abstract IParseIndexerResponse GetParser();
 
-        public HttpIndexerBase(IIndexerHttpClient httpClient, IEventAggregator eventAggregator, IIndexerStatusService indexerStatusService, IConfigService configService, Logger logger)
+        public HttpIndexerBase(IIndexerHttpClient httpClient, IEventAggregator eventAggregator, IIndexerStatusService indexerStatusService, IConfigService configService, Logger logger, ICacheManager cacheManager)
             : base(indexerStatusService, configService, logger)
         {
             _httpClient = httpClient;
             _eventAggregator = eventAggregator;
+            _cache = cacheManager.GetCache<FetchIndexerResponse>(GetType(), Definition.Id);
         }
 
         public override Task<IndexerPageableQueryResult> Fetch(MovieSearchCriteria searchCriteria)
@@ -631,6 +633,32 @@ namespace NzbDrone.Core.Indexers
                 }
             }
         }
+        
+        protected virtual string GetCacheKey(HttpRequest request)
+        {
+            var builder = new StringBuilder();
+            
+            builder.Append("HttpRequest")
+            builder.AppendFormat("[{0}] ", request.Method);
+            builder.AppendFormat("[{0}] ", request.Url);
+            builder.AppendFormat("[{0}] ", request.Headers);
+            builder.AppendFormat("[{0}] ", request.Encoding);
+            if (request.ProxySettings)
+            {
+                builder.AppendFormat("[{0}] ", request.ProxySettings.Key);
+            }
+            else
+            {
+                builder.Append("[] ");
+            }
+            builder.AppendFormat("[{0}] ", request.Credentials);
+            builder.AppendFormat("[{0}] ", request.SuppressHttpError);
+            builder.AppendFormat("[{0}] ", request.SuppressHttpErrorStatusCodes);
+            builder.AppendFormat("[{0}] ", request.UseSimplifiedUserAgent);
+            //builder.AppendFormat("[{0}] ", request.Cookies); //TODO Should we ignore the cookies here?
+
+            return builder.ToString();
+        }
 
         protected virtual async Task<IndexerResponse> FetchIndexerResponse(IndexerRequest request)
         {
@@ -660,6 +688,15 @@ namespace NzbDrone.Core.Indexers
 
             request.HttpRequest.SuppressHttpError = true;
             request.HttpRequest.Encoding ??= Encoding;
+            
+            var cacheDurationSeconds = Settings.BaseSettings.CacheDurationSeconds ?? 0; 
+            var cacheKey = GetCacheKey(request.HttpRequest);
+            
+            if (cacheDurationSeconds > 0 && _cache.Find(cacheKey, out var cachedResponse))
+            {
+                _logger.Trace("Found cached indexer search response");
+                return new IndexerResponse(request, cachedResponse);
+            }
 
             var response = await RetryStrategy
                 .ExecuteAsync(static async (state, _) => await state._httpClient.ExecuteProxiedAsync(state.HttpRequest, state.Definition), (_httpClient, request.HttpRequest, Definition))
@@ -703,6 +740,11 @@ namespace NzbDrone.Core.Indexers
             }
 
             UpdateCookies(request.HttpRequest.Cookies, DateTime.Now.AddDays(30));
+            
+            if (cacheDurationSeconds > 0)
+            {
+                _cache.Set(cacheKey, response, TimeSpan.FromSeconds(cacheDurationSeconds));
+            }
 
             return new IndexerResponse(request, response);
         }

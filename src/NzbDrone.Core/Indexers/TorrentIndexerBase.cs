@@ -12,8 +12,8 @@ namespace NzbDrone.Core.Indexers
     {
         public override DownloadProtocol Protocol => DownloadProtocol.Torrent;
 
-        protected TorrentIndexerBase(IIndexerHttpClient httpClient, IEventAggregator eventAggregator, IIndexerStatusService indexerStatusService, IConfigService configService, Logger logger)
-            : base(httpClient, eventAggregator, indexerStatusService, configService, logger)
+        protected TorrentIndexerBase(IIndexerHttpClient httpClient, IEventAggregator eventAggregator, IIndexerStatusService indexerStatusService, IConfigService configService, Logger logger, ICacheManager cacheManager)
+            : base(httpClient, eventAggregator, indexerStatusService, configService, logger, cacheManager)
         {
         }
 
